@@ -1,0 +1,138 @@
+---
+title: "Predictive Machine Learning - Course Project Writeup"
+date: "Sunday, December 16, 2014"
+output: html_document
+---
+
+Wearable mobile devices a a trend today and especially devices that monitor the human health parameters like blood pressure, stress levels et al have become increasingly popular. Wearable fitness devices like Fit Bit, Nike Fuel Band collect a large amount of data and if measurable insights can be drawn from it, it is not only beneficial to the wearer, but can also predict ways in which certain exercises/activities can be done to improve overall health.
+
+In this assignment, we start with the raw data (provided seprately as training and testing data) from accelerometers on the belt, forearm, arm & dumbell of 6 participants. It is required to analyse and exercise data and then be able to predict the manned in which the participants performed the exercise.
+
+
+We start with setting up of the libraries required to perform the analysis
+
+
+###Initial steps - library loading and download data
+
+```{r, warning=FALSE,message=FALSE,results='hide'}
+library(knitr)
+opts_chunk$set(cache=TRUE,echo=TRUE)
+library(caret)
+library(randomForest)
+#setwd("E:/Personal/__Learning/__Coursera/Johns Hopkins - Data Science/08. Predictive Machine Learning/Project")
+```
+
+####Download data
+```{r, results='hide'}
+downloadDataset <- function(URL="", destFile="data.csv"){
+  if(!file.exists(destFile)){
+    download.file(URL, destFile, method="curl")
+  }else{
+    message("Dataset already downloaded.")
+  }
+}
+
+trainURL<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+downloadDataset(trainURL, "pml-training.csv")
+downloadDataset(testURL, "pml-testing.csv")
+```
+
+
+####Loading the data
+```{r}
+training <- read.csv("pml-training.csv",na.strings=c("NA",""))
+testing <-read.csv("pml-testing.csv",na.strings=c("NA",""))
+```
+
+We now check how many rows/columns are present in training and test sets
+```{r} 
+dim(training)
+dim(testing)
+```
+
+
+####Data processing
+```{r}
+sum(is.na(training))  # Total NA values
+table(colSums(is.na(training)))
+table(colSums(is.na(testing)))
+```
+
+It is clear that 60 variables have 0 NA values while the rest have NA values for almost all the rows of the dataset, so we will ignore them 
+
+####Clean up of training dataset
+```{r,echo=TRUE}
+columnNACounts <- colSums(is.na(training))        
+delColumns <- columnNACounts >= 0.95* nrow(training)
+cleanTrainingdata <- training[!delColumns]        
+sum(is.na(cleanTrainingdata))                     
+cleanTrainingdata <- cleanTrainingdata[, c(7:60)] # removing columns not needed 
+```
+
+####Clean up of testing dataset
+```{r,echo=TRUE}
+columnNACounts <- colSums(is.na(testing))         
+delColumns <- columnNACounts >= 0.95*nrow(testing) 
+cleanTestingdata <- testing[!delColumns]        
+sum(is.na(cleanTestingdata))                     
+cleanTestingdata <- cleanTestingdata[, c(7:60)] # removing columns not needed
+```
+
+##Exploratory data anaylsis
+```{r}
+s <- summary(cleanTrainingdata$classe)
+plot(cleanTrainingdata$classe,col=cleanTrainingdata$classe,main = "`Classe` frequency plot")
+```
+
+
+##Data partitioning & Model building
+```{r}
+partition <- createDataPartition(y = cleanTrainingdata$classe, p = 0.6, list = FALSE)
+trainingdata <- cleanTrainingdata[partition, ]
+testdata <- cleanTrainingdata[-partition, ]
+```
+We set the seed before building the Random forest model. And we use a 4 fold cross-validation during the process.
+```{r,echo=FALSE}
+set.seed(123)
+model <- train(classe ~ ., data = trainingdata, method = "rf", prox = TRUE, 
+               trControl = trainControl(method = "cv", number = 4, 
+               allowParallel = TRUE))
+```
+
+
+####In-sample accuracy
+```{r}
+training_pred <- predict(model, trainingdata)
+confusionMatrix(training_pred, trainingdata$classe)
+```
+
+####out of sample accuracy
+```{r}
+testing_pred <- predict(model, testdata)
+confusionMatrix(testing_pred, testdata$classe)
+```
+From the above, we see that the in-sample and out-of-sampe accuracies are very high - 100% and 99.76% respectively for trainig and testing data sets.
+
+##2nd part of the project: Prediction on the testing set
+####In this section, we are required to predict the exercise types of 20 test cases based on the model we have created thus far.
+```{r}
+predictions <- predict(model, cleanTestingdata)
+predictions <- as.character(predictions)
+predictions
+```
+
+These answers have to be written to individual files so that they can submitted for evaluation via the Coursera web site. The following code achieves this objective.
+
+```{r}
+pml_write_files = function(x) {
+  n = length(x)
+  for (i in 1:n) {
+    filename = paste0("problem_id_", i, ".txt")
+    write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, 
+                col.names = FALSE)
+  }
+}
+
+pml_write_files(predictions)
+```
